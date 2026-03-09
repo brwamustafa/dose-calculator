@@ -118,7 +118,7 @@ export function calculateDose(
     return {
         drugName: drug.name,
         formulationLabel: formulation.label,
-        route: drug.route,
+        route: formulation.route || drug.route,
         singleDose: singleDoseStr,
         frequencyPerDay: formulation.frequencyPerDay,
         totalDailyDose: totalDailyDoseVal,

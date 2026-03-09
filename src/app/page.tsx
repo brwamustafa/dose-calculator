@@ -27,13 +27,19 @@ export default function Home() {
   const handleDrugSelect = (key: string) => {
     setMedication(key);
     const drugData = drugs[key];
-    if (drugData && drugData.formulations && drugData.formulations.length > 0) {
-      setFormulation(drugData.formulations[0].label);
+
+    if (drugData?.formulations?.length) {
+      const preferred =
+        drugData.formulations.find(f => f.route === "oral") ||
+        drugData.formulations[0];
+
+      setFormulation(preferred.label);
     } else {
       setFormulation("");
     }
+
     setResult(null);
-  };
+  }
 
   const handleMedicationChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newMedication = e.target.value;
@@ -191,26 +197,61 @@ export default function Home() {
               {errors.medication && <p className="text-xs text-red-500">{errors.medication}</p>}
             </div>
 
-            {selectedDrug && selectedDrug.formulations && selectedDrug.formulations.length > 0 && (
-              <div className="space-y-1.5">
-                <label htmlFor="formulation" className="block text-sm font-medium text-slate-700">
-                  Formulation
-                </label>
-                <select
-                  id="formulation"
-                  value={formulation}
-                  onChange={(e) => setFormulation(e.target.value)}
-                  className={`w-full px-4 py-2.5 bg-white border ${errors.formulation ? 'border-red-300 focus:ring-red-500/20 focus:border-red-500' : 'border-slate-300 focus:ring-blue-500/20 focus:border-blue-500'} rounded-lg text-slate-900 focus:ring-2 outline-none transition-all appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20viewBox%3D%220%200%2020%2020%22%3E%3Cpath%20stroke%3D%22%236b7280%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20stroke-width%3D%221.5%22%20d%3D%22m6%208%204%204%204-4%22%2F%3E%3C%2Fsvg%3E')] bg-[length:1.25rem_1.25rem] bg-[right_0.5rem_center] bg-no-repeat`}
-                >
-                  {selectedDrug.formulations.map((f, idx) => (
-                    <option key={idx} value={f.label}>
-                      {f.label}
-                    </option>
-                  ))}
-                </select>
-                {errors.formulation && <p className="text-xs text-red-500">{errors.formulation}</p>}
-              </div>
-            )}
+            {selectedDrug && selectedDrug.formulations && selectedDrug.formulations.length > 0 && (() => {
+              // Clinically sensible display order for formulation types
+              const TYPE_ORDER: string[] = [
+                "tablet", "capsule", "suspension", "drops", "spray", "infusion", "injection"
+              ];
+              const TYPE_LABEL: Record<string, string> = {
+                tablet: "Tablet",
+                capsule: "Capsule",
+                suspension: "Oral Suspension / Syrup",
+                drops: "Drops",
+                spray: "Nasal Spray",
+                infusion: "IV Infusion",
+                injection: "Injection",
+              };
+
+              // Group formulations by type, preserving order within each group
+              const groups = new Map<string, typeof selectedDrug.formulations>();
+              for (const f of selectedDrug.formulations) {
+                const t = f.type ?? "other";
+                if (!groups.has(t)) groups.set(t, []);
+                groups.get(t)!.push(f);
+              }
+
+              // Render groups in TYPE_ORDER; any unlisted type falls to the end
+              const orderedTypes = [
+                ...TYPE_ORDER.filter((t) => groups.has(t)),
+                ...[...groups.keys()].filter((t) => !TYPE_ORDER.includes(t)),
+              ];
+
+              return (
+                <div className="space-y-1.5">
+                  <label htmlFor="formulation" className="block text-sm font-medium text-slate-700">
+                    Formulation
+                  </label>
+                  <select
+                    id="formulation"
+                    value={formulation}
+                    onChange={(e) => setFormulation(e.target.value)}
+                    className={`w-full px-4 py-2.5 bg-white border ${errors.formulation ? 'border-red-300 focus:ring-red-500/20 focus:border-red-500' : 'border-slate-300 focus:ring-blue-500/20 focus:border-blue-500'} rounded-lg text-slate-900 focus:ring-2 outline-none transition-all appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20fill%3D%22none%22%20viewBox%3D%220%200%2020%2020%22%3E%3Cpath%20stroke%3D%22%236b7280%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20stroke-width%3D%221.5%22%20d%3D%22m6%208%204%204%204-4%22%2F%3E%3C%2Fsvg%3E')] bg-[length:1.25rem_1.25rem] bg-[right_0.5rem_center] bg-no-repeat`}
+                  >
+                    {orderedTypes.map((type) => (
+                      <optgroup key={type} label={TYPE_LABEL[type] ?? type.charAt(0).toUpperCase() + type.slice(1)}>
+                        {groups.get(type)!.map((f) => (
+                          <option key={f.id ?? f.label} value={f.label}>
+                            {f.label}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                  {errors.formulation && <p className="text-xs text-red-500">{errors.formulation}</p>}
+                </div>
+              );
+            })()}
+
 
             <button
               type="button"
