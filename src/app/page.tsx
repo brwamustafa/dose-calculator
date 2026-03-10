@@ -507,6 +507,8 @@ export default function Home() {
   const [addDrugKey, setAddDrugKey] = useState<string>("");
   const [addFormulation, setAddFormulation] = useState<string>("");
 
+  const [recFormulations, setRecFormulations] = useState<Record<string, string>>({});
+
   const drugOptions = Object.entries(drugs).map(([key, drug]) => ({
     value: key,
     label: drug.name,
@@ -1014,57 +1016,88 @@ export default function Home() {
                                 weightNum >= 1 &&
                                 weightNum <= 200 &&
                                 !(ageNum < 1 / 12 || weightNum < 3);
-                              const formulations = d?.formulations?.length
-                                ? [d.formulations.find((f) => f.route === "PO") ?? d.formulations[0]]
-                                : [];
+                              const preferredTypes = !isNaN(ageNum) && ageNum < 12
+                                ? ["suspension"]
+                                : ["tablet", "capsule"];
 
-                              return formulations.map((f) => {
-                                const res =
-                                  canCalc && f?.label
-                                    ? calculateDose(ageNum, weightNum, drugKey, f.label, null)
-                                    : null;
-                                const doseStr = res?.singleDose ?? "—";
-                                const freqStr = res ? `${res.frequencyPerDay}× daily` : "—";
+                              const preferredFormulationLabel = !isNaN(ageNum) && ageNum < 12
+                                ? "Preferred formulation for pediatric patients"
+                                : "Preferred formulation for adults";
 
-                                return (
-                                  <div
-                                    key={`${drugKey}::${f.label}`}
-                                    className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm"
-                                  >
-                                    <div className="flex items-start justify-between gap-3">
-                                      <div className="min-w-0">
-                                        <p className="text-sm font-semibold text-slate-800 leading-tight truncate">
-                                          {d?.name || drugKey}
-                                        </p>
-                                        <p className="text-xs text-slate-500 mt-0.5 truncate">{f.label}</p>
-                                      </div>
-                                      <span className={`mt-1 w-1.5 h-1.5 rounded-full flex-shrink-0 ${section.color.replace("text", "bg")}`} />
+                              const pickDefaultFormulation = (formulations: typeof d.formulations) => {
+                                const match = formulations.find((f) => preferredTypes.includes(f.type));
+                                return match ?? formulations[0];
+                              };
+
+                              const allForms = d?.formulations ?? [];
+                              const defaultFormLabel = allForms.length ? pickDefaultFormulation(allForms).label : "";
+                              const selectedFormLabel = recFormulations[drugKey] ?? defaultFormLabel;
+
+                              const res =
+                                canCalc && selectedFormLabel
+                                  ? calculateDose(ageNum, weightNum, drugKey, selectedFormLabel, null)
+                                  : null;
+                              const doseStr = res?.singleDose ?? "—";
+                              const freqStr = res ? `${res.frequencyPerDay}× daily` : "—";
+
+                              if (!allForms.length) return [];
+
+                              return (
+                                <div
+                                  key={`${drugKey}::recommended`}
+                                  className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm"
+                                >
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                      <p className="text-sm font-semibold text-slate-800 leading-tight truncate">
+                                        {d?.name || drugKey}
+                                      </p>
                                     </div>
-
-                                    <div className="grid grid-cols-2 gap-2 mt-2">
-                                      <div className="bg-slate-50 rounded-lg px-3 py-2 flex flex-col">
-                                        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Dose</span>
-                                        <span className="text-xs font-bold text-blue-700 mt-0.5 leading-snug">
-                                          {doseStr}
-                                        </span>
-                                      </div>
-                                      <div className="bg-slate-50 rounded-lg px-3 py-2 flex flex-col">
-                                        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Freq.</span>
-                                        <span className="text-xs font-semibold text-slate-700 mt-0.5">{freqStr}</span>
-                                      </div>
-                                    </div>
-
-                                    <button
-                                      type="button"
-                                      onClick={() => addRecommendationToPrescription(drugKey, f.label)}
-                                      disabled={!canCalc}
-                                      className="mt-2 w-full py-2 px-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors text-xs"
-                                    >
-                                      Add to Prescription
-                                    </button>
+                                    <span className={`mt-1 w-1.5 h-1.5 rounded-full flex-shrink-0 ${section.color.replace("text", "bg")}`} />
                                   </div>
-                                );
-                              });
+
+                                  <div className="mt-2">
+                                    <select
+                                      value={selectedFormLabel}
+                                      onChange={(e) =>
+                                        setRecFormulations((prev) => ({ ...prev, [drugKey]: e.target.value }))
+                                      }
+                                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                                    >
+                                      {allForms.map((f) => (
+                                        <option key={f.id ?? f.label} value={f.label}>
+                                          {f.label}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <p className="text-[11px] text-slate-400 mt-1">
+                                      {preferredFormulationLabel}
+                                    </p>
+                                  </div>
+
+                                  <div className="grid grid-cols-2 gap-2 mt-2">
+                                    <div className="bg-slate-50 rounded-lg px-3 py-2 flex flex-col">
+                                      <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Dose</span>
+                                      <span className="text-xs font-bold text-blue-700 mt-0.5 leading-snug">
+                                        {doseStr}
+                                      </span>
+                                    </div>
+                                    <div className="bg-slate-50 rounded-lg px-3 py-2 flex flex-col">
+                                      <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Freq.</span>
+                                      <span className="text-xs font-semibold text-slate-700 mt-0.5">{freqStr}</span>
+                                    </div>
+                                  </div>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => addRecommendationToPrescription(drugKey, selectedFormLabel)}
+                                    disabled={!canCalc}
+                                    className="mt-2 w-full py-2 px-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors text-xs"
+                                  >
+                                    Add to Prescription
+                                  </button>
+                                </div>
+                              );
                             })}
                           </div>
                         </div>
