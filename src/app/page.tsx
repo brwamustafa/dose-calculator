@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { drugs } from "@/lib/drugs";
 import { diagnoses } from "@/lib/diagnoses";
 import { calculateDose, DoseResult } from "@/lib/calculateDose";
@@ -36,6 +36,33 @@ const TYPE_LABEL: Record<string, string> = {
   spray: "Nasal Spray",
   infusion: "IV Infusion",
   injection: "Injection",
+};
+
+const KNOWN_INTERACTIONS: Record<string, Record<string, string>> = {
+  cetirizine: {
+    loratadine: "Duplicate antihistamine therapy; increased sedation/dryness risk.",
+    fexofenadine: "Duplicate antihistamine therapy; increased side effects risk.",
+  },
+  loratadine: {
+    cetirizine: "Duplicate antihistamine therapy; increased sedation/dryness risk.",
+    fexofenadine: "Duplicate antihistamine therapy; increased side effects risk.",
+  },
+  fexofenadine: {
+    cetirizine: "Duplicate antihistamine therapy; increased side effects risk.",
+    loratadine: "Duplicate antihistamine therapy; increased side effects risk.",
+  },
+  fluticasone: {
+    mometasone: "Duplicate intranasal corticosteroids; increased local steroid adverse effects.",
+  },
+  mometasone: {
+    fluticasone: "Duplicate intranasal corticosteroids; increased local steroid adverse effects.",
+  },
+  amoxicillin: {
+    "amoxicillin-clavulanate": "Duplicate penicillin antibiotic coverage; increased adverse effects risk.",
+  },
+  "amoxicillin-clavulanate": {
+    amoxicillin: "Duplicate penicillin antibiotic coverage; increased adverse effects risk.",
+  },
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -505,18 +532,6 @@ export default function Home() {
     setResult(null);
   };
 
-  const handleMedicationChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newMedication = e.target.value;
-    setMedication(newMedication);
-    const drugData = drugs[newMedication];
-    if (drugData?.formulations?.length) {
-      setFormulation(drugData.formulations[0].label);
-    } else {
-      setFormulation("");
-    }
-    setResult(null);
-  };
-
   const handleCalculate = () => {
     setErrors({});
     const newErrors: typeof errors = {};
@@ -551,11 +566,6 @@ export default function Home() {
   };
 
   // ── Prescription handlers ─────────────────────────────────────────────────
-  const openAddModal = () => {
-    setEditingItem(undefined);
-    setModalOpen(true);
-  };
-
   const openEditModal = (item: PrescriptionItem) => {
     setEditingItem(item);
     setModalOpen(true);
@@ -580,25 +590,87 @@ export default function Home() {
   const removeItem = (id: string) =>
     setPrescription((prev) => prev.filter((p) => p.id !== id));
 
-  const copyPrescription = () => {
-    const lines = prescription.map((p, i) => {
-      const r = p.result;
-      return [
-        `${i + 1}. ${r.drugName} — ${r.formulationLabel}`,
-        `   Dose: ${r.singleDose ?? "N/A"} ${r.route}`,
-        `   Frequency: ${r.frequencyPerDay}× daily`,
-        r.durationDays ? `   Duration: ${r.durationDays} days` : null,
-        r.totalQuantity ? `   Total: ${r.totalQuantity}` : null,
-      ]
-        .filter(Boolean)
-        .join("\n");
-    });
-    navigator.clipboard.writeText(lines.join("\n\n"));
+  const copyPrescription = useCallback(() => {
+    const text = prescription
+      .map((p) => {
+        const r = p.result;
+        const durationStr = r.durationDays ? ` for ${r.durationDays} days` : "";
+        return `${r.drugName} ${r.formulationLabel}\n${r.singleDose ?? "N/A"} ${r.route} ${r.frequencyPerDay}x daily${durationStr}`;
+      })
+      .join("\n\n");
+
+    navigator.clipboard.writeText(text);
     setCopiedRx(true);
     setTimeout(() => setCopiedRx(false), 2000);
-  };
+  }, [prescription]);
 
   const selectedDrug = drugs[medication];
+
+  const interactionWarnings = useMemo(() => {
+    if (prescription.length < 2) return [] as string[];
+    const warnings: string[] = [];
+    for (let i = 0; i < prescription.length; i++) {
+      for (let j = i + 1; j < prescription.length; j++) {
+        const a = prescription[i].drugKey;
+        const b = prescription[j].drugKey;
+        const msg = KNOWN_INTERACTIONS[a]?.[b] ?? KNOWN_INTERACTIONS[b]?.[a] ?? null;
+        if (msg) {
+          const aName = drugs[a]?.name ?? a;
+          const bName = drugs[b]?.name ?? b;
+          warnings.push(`${aName} + ${bName}: ${msg}`);
+        }
+      }
+    }
+    return warnings;
+  }, [prescription]);
+
+  const addManualMedication = () => {
+    const ageNum = parseFloat(bAge);
+    const weightNum = parseFloat(bWeight);
+    if (isNaN(ageNum) || ageNum <= 0) return;
+    if (isNaN(weightNum) || weightNum < 1 || weightNum > 200) return;
+    if (ageNum < 1 / 12 || weightNum < 3) return;
+    if (!addDrugKey || !addFormulation) return;
+
+    const res = calculateDose(ageNum, weightNum, addDrugKey, addFormulation, null);
+    if (!res) return;
+
+    const newItem: PrescriptionItem = {
+      id: `rx-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      result: res,
+      drugKey: addDrugKey,
+      formulationLabel: addFormulation,
+      durationDays: null,
+    };
+    setPrescription((prev) => [...prev, newItem]);
+    
+    // Reset form
+    setAddDrugKey("");
+    setAddFormulation("");
+  };
+
+  const addRecommendationToPrescription = useCallback(
+    (drugKey: string, formulationLabel: string) => {
+      const ageNum = parseFloat(bAge);
+      const weightNum = parseFloat(bWeight);
+      if (isNaN(ageNum) || ageNum <= 0) return;
+      if (isNaN(weightNum) || weightNum < 1 || weightNum > 200) return;
+      if (ageNum < 1 / 12 || weightNum < 3) return;
+
+      const res = calculateDose(ageNum, weightNum, drugKey, formulationLabel, null);
+      if (!res) return;
+
+      const newItem: PrescriptionItem = {
+        id: `rx-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        result: res,
+        drugKey,
+        formulationLabel,
+        durationDays: null,
+      };
+      setPrescription((prev) => [...prev, newItem]);
+    },
+    [bAge, bWeight]
+  );
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
@@ -930,16 +1002,70 @@ export default function Home() {
                       section.items.length > 0 && (
                         <div key={idx} className="space-y-1.5">
                           <p className={`text-[10px] uppercase font-bold tracking-wider ${section.color}`}>{section.label}</p>
-                          <div className="flex flex-wrap gap-2">
-                            {section.items.map((drugKey) => (
-                              <div
-                                key={drugKey}
-                                className={`px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-700 flex items-center gap-2 hover:border-blue-300 hover:bg-blue-50/30 transition-all cursor-default`}
-                              >
-                                <span className={`w-1.5 h-1.5 rounded-full ${section.color.replace('text', 'bg')}`} />
-                                {drugs[drugKey]?.name || drugKey}
-                              </div>
-                            ))}
+                          <div className="space-y-2">
+                            {section.items.flatMap((drugKey) => {
+                              const d = drugs[drugKey];
+                              const ageNum = parseFloat(bAge);
+                              const weightNum = parseFloat(bWeight);
+                              const canCalc =
+                                !isNaN(ageNum) &&
+                                ageNum > 0 &&
+                                !isNaN(weightNum) &&
+                                weightNum >= 1 &&
+                                weightNum <= 200 &&
+                                !(ageNum < 1 / 12 || weightNum < 3);
+                              const formulations = d?.formulations?.length
+                                ? [d.formulations.find((f) => f.route === "PO") ?? d.formulations[0]]
+                                : [];
+
+                              return formulations.map((f) => {
+                                const res =
+                                  canCalc && f?.label
+                                    ? calculateDose(ageNum, weightNum, drugKey, f.label, null)
+                                    : null;
+                                const doseStr = res?.singleDose ?? "—";
+                                const freqStr = res ? `${res.frequencyPerDay}× daily` : "—";
+
+                                return (
+                                  <div
+                                    key={`${drugKey}::${f.label}`}
+                                    className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm"
+                                  >
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="min-w-0">
+                                        <p className="text-sm font-semibold text-slate-800 leading-tight truncate">
+                                          {d?.name || drugKey}
+                                        </p>
+                                        <p className="text-xs text-slate-500 mt-0.5 truncate">{f.label}</p>
+                                      </div>
+                                      <span className={`mt-1 w-1.5 h-1.5 rounded-full flex-shrink-0 ${section.color.replace("text", "bg")}`} />
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-2 mt-2">
+                                      <div className="bg-slate-50 rounded-lg px-3 py-2 flex flex-col">
+                                        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Dose</span>
+                                        <span className="text-xs font-bold text-blue-700 mt-0.5 leading-snug">
+                                          {doseStr}
+                                        </span>
+                                      </div>
+                                      <div className="bg-slate-50 rounded-lg px-3 py-2 flex flex-col">
+                                        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Freq.</span>
+                                        <span className="text-xs font-semibold text-slate-700 mt-0.5">{freqStr}</span>
+                                      </div>
+                                    </div>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => addRecommendationToPrescription(drugKey, f.label)}
+                                      disabled={!canCalc}
+                                      className="mt-2 w-full py-2 px-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors text-xs"
+                                    >
+                                      Add to Prescription
+                                    </button>
+                                  </div>
+                                );
+                              });
+                            })}
                           </div>
                         </div>
                       )
@@ -986,6 +1112,24 @@ export default function Home() {
                     </button>
                   )}
                 </div>
+
+                {interactionWarnings.length > 0 && (
+                  <div className="mb-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl px-4 py-3">
+                    <div className="flex items-start gap-2">
+                      <svg className="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold">Potential drug interactions detected</p>
+                        <ul className="mt-1 text-xs space-y-1">
+                          {interactionWarnings.map((w, idx) => (
+                            <li key={idx} className="leading-snug">{w}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {prescription.length === 0 ? (
                   <div className="bg-slate-50 border border-dashed border-slate-200 rounded-xl px-4 py-6 text-center">
@@ -1047,11 +1191,11 @@ export default function Home() {
                     </div>
                   )}
 
-                  {/* Add button — wired to open modal pre-filled; logic deferred */}
+                  {/* Add button — calculate and append directly */}
                   <button
                     id="add-medication-btn"
-                    onClick={openAddModal}
-                    disabled={!addDrugKey}
+                    onClick={addManualMedication}
+                    disabled={!addDrugKey || !addFormulation || !bAge || !bWeight}
                     className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors text-sm flex items-center justify-center gap-2 shadow-sm shadow-blue-200"
                   >
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

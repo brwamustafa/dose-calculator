@@ -23,36 +23,28 @@ export default function SearchableSelect({
     hasError = false,
 }: SearchableSelectProps) {
     const selectedOption = options.find((o) => o.value === value);
-    const [query, setQuery] = useState(selectedOption?.label || "");
+    const [draftQuery, setDraftQuery] = useState("");
     const [isOpen, setIsOpen] = useState(false);
     const wrapperRef = useRef<HTMLDivElement>(null);
-
-    // Keep display text in sync if value changes externally
-    useEffect(() => {
-        const match = options.find((o) => o.value === value);
-        if (match) setQuery(match.label);
-    }, [value, options]);
 
     // Close on click outside
     useEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
             if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
                 setIsOpen(false);
-                // Restore display text to the current selection on blur
-                const match = options.find((o) => o.value === value);
-                setQuery(match?.label || "");
+                setDraftQuery("");
             }
         };
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, [value, options]);
 
-    const filtered = query
-        ? options.filter((o) => o.label.toLowerCase().includes(query.toLowerCase()))
+    const filtered = draftQuery
+        ? options.filter((o) => o.label.toLowerCase().includes(draftQuery.toLowerCase()))
         : options;
 
     const handleSelect = (option: Option) => {
-        setQuery(option.label);
+        setDraftQuery("");
         setIsOpen(false);
         onChange(option.value);
     };
@@ -66,12 +58,15 @@ export default function SearchableSelect({
             <input
                 type="text"
                 autoComplete="off"
-                value={query}
+                value={isOpen ? draftQuery : (selectedOption?.label ?? draftQuery)}
                 onChange={(e) => {
-                    setQuery(e.target.value);
+                    setDraftQuery(e.target.value);
                     setIsOpen(true);
                 }}
-                onFocus={() => setIsOpen(true)}
+                onFocus={() => {
+                    setIsOpen(true);
+                    setDraftQuery(selectedOption?.label ?? "");
+                }}
                 placeholder={placeholder}
                 className={`w-full px-4 py-2.5 bg-white border ${borderClass} rounded-lg text-slate-900 focus:ring-2 outline-none transition-all placeholder:text-slate-400 pr-8`}
             />
