@@ -14,6 +14,7 @@ interface PrescriptionItem {
   drugKey: string;
   formulationLabel: string;
   durationDays: number | null;
+  patientAgeMonths: number | null;
 }
 
 type ModalErrors = {
@@ -135,6 +136,22 @@ function PrescriptionCard({
   onRemove: () => void;
 }) {
   const r = item.result;
+  const formulation = drugs[item.drugKey]?.formulations?.find(
+    (f) => f.label === item.formulationLabel
+  );
+  const maxDaily = drugs[item.drugKey]?.formulations?.find(
+    (f) => f.label === item.formulationLabel
+  )?.maxMgPerDay;
+  const maxExceeded =
+    r.totalDailyDose !== null && maxDaily !== null && maxDaily !== undefined && r.totalDailyDose > maxDaily;
+  const minAgeMonths = formulation?.minAgeMonths;
+  const ageRestricted =
+    r.ageWarning !== null ||
+    (minAgeMonths !== null &&
+      minAgeMonths !== undefined &&
+      item.patientAgeMonths !== null &&
+      item.patientAgeMonths !== undefined &&
+      item.patientAgeMonths < minAgeMonths);
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col gap-2 group relative">
       {/* Header */}
@@ -161,29 +178,45 @@ function PrescriptionCard({
         </div>
       </div>
 
+      {ageRestricted && (
+        <div className="bg-red-50 border border-red-200 text-red-700 text-[10px] rounded-lg px-2 py-1 flex items-center gap-1">
+          <span>⚠ Age Restricted</span>
+        </div>
+      )}
+
+      {maxExceeded && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-800 text-[10px] rounded-lg px-2 py-1 flex items-center gap-1">
+          <span>⚠ Max Dose Exceeded</span>
+        </div>
+      )}
+
       {/* Body */}
-      <div className="grid grid-cols-3 gap-2 mt-1">
-        <div className="bg-slate-50 rounded-lg px-3 py-2 flex flex-col col-span-1">
-          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Dose</span>
-          <span className="text-xs font-bold text-blue-700 mt-0.5 leading-snug">{r.singleDose ?? "—"}</span>
-        </div>
-        <div className="bg-slate-50 rounded-lg px-3 py-2 flex flex-col col-span-1">
-          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Freq.</span>
-          <span className="text-xs font-semibold text-slate-700 mt-0.5">{r.frequencyPerDay}× daily</span>
-        </div>
-        <div className="bg-slate-50 rounded-lg px-3 py-2 flex flex-col col-span-1">
-          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Duration</span>
-          <span className="text-xs font-semibold text-slate-700 mt-0.5">
-            {r.durationDays ? `${r.durationDays}d` : "—"}
+      <div className="mt-3 bg-blue-50/30 rounded-xl border-2 border-blue-100/50 p-4 flex flex-col items-center justify-center text-center shadow-sm">
+        <span className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mb-1">Calculated Dose</span>
+        <div className="flex flex-col items-center">
+          <span className="text-3xl font-black text-blue-700 leading-tight">
+            {r.singleDose ?? "—"}
+          </span>
+          <span className="text-xs font-bold text-blue-600 uppercase tracking-tight">
+            {r.route} {r.frequencyPerDay}× daily
           </span>
         </div>
       </div>
 
-      {r.totalQuantity && (
-        <p className="text-xs text-slate-500 mt-0.5">
-          Total: <span className="font-semibold text-slate-700">{r.totalQuantity}</span>
-        </p>
-      )}
+      <div className="grid grid-cols-2 gap-2 mt-2">
+        <div className="bg-slate-50 rounded-lg px-3 py-2 flex flex-col">
+          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Duration</span>
+          <span className="text-xs font-semibold text-slate-700 mt-0.5">
+            {r.durationDays ? `${r.durationDays} days` : "—"}
+          </span>
+        </div>
+        {r.totalQuantity && (
+          <div className="bg-slate-50 rounded-lg px-3 py-2 flex flex-col">
+            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Total</span>
+            <span className="text-xs font-bold text-slate-700 mt-0.5">{r.totalQuantity}</span>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -258,11 +291,13 @@ function MedicationModal({
 
   const handleAdd = () => {
     if (!mResult) return;
+    const ageNum = parseFloat(patientAge);
     onSave({
       result: mResult,
       drugKey: mDrugKey,
       formulationLabel: mFormulation,
       durationDays: mDuration ? parseFloat(mDuration) : null,
+      patientAgeMonths: !isNaN(ageNum) && ageNum > 0 ? ageNum * 12 : null,
     });
   };
 
@@ -608,6 +643,25 @@ export default function Home() {
 
   const selectedDrug = drugs[medication];
 
+  const selectedFormulationMax = selectedDrug?.formulations?.find(
+    (f) => f.label === formulation
+  )?.maxMgPerDay;
+  const selectedFormulationMinAgeMonths = selectedDrug?.formulations?.find(
+    (f) => f.label === formulation
+  )?.minAgeMonths;
+  const ageMonthsMain = !isNaN(parseFloat(age)) ? parseFloat(age) * 12 : NaN;
+  const ageRestrictedMain =
+    (result?.ageWarning ?? null) !== null ||
+    (selectedFormulationMinAgeMonths !== null &&
+      selectedFormulationMinAgeMonths !== undefined &&
+      !isNaN(ageMonthsMain) &&
+      ageMonthsMain < selectedFormulationMinAgeMonths);
+  const maxExceededMain =
+    result?.totalDailyDose !== null &&
+    selectedFormulationMax !== null &&
+    selectedFormulationMax !== undefined &&
+    (result?.totalDailyDose ?? 0) > selectedFormulationMax;
+
   const interactionWarnings = useMemo(() => {
     if (prescription.length < 2) return [] as string[];
     const warnings: string[] = [];
@@ -643,6 +697,7 @@ export default function Home() {
       drugKey: addDrugKey,
       formulationLabel: addFormulation,
       durationDays: null,
+      patientAgeMonths: ageNum * 12,
     };
     setPrescription((prev) => [...prev, newItem]);
     
@@ -668,6 +723,7 @@ export default function Home() {
         drugKey,
         formulationLabel,
         durationDays: null,
+        patientAgeMonths: ageNum * 12,
       };
       setPrescription((prev) => [...prev, newItem]);
     },
@@ -680,8 +736,8 @@ export default function Home() {
       {modalOpen && (
         <MedicationModal
           initialItem={editingItem}
-          patientAge={age}
-          patientWeight={weight}
+          patientAge={mode === "builder" ? bAge : age}
+          patientWeight={mode === "builder" ? bWeight : weight}
           onClose={() => { setModalOpen(false); setEditingItem(undefined); }}
           onSave={handleModalSave}
         />
@@ -820,17 +876,41 @@ export default function Home() {
                         </div>
                       )}
 
+                      {!result.ageWarning && ageRestrictedMain && (
+                        <div className="bg-red-50 rounded-lg p-3 border border-red-200 flex items-start space-x-2">
+                          <svg className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3.L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                          </svg>
+                          <p className="text-sm font-semibold text-red-800 leading-tight">⚠ This medication is not recommended for this age group.</p>
+                        </div>
+                      )}
+
                       <div className="space-y-3">
+                        {maxExceededMain && (
+                          <div className="bg-amber-50 rounded-lg p-3 border border-amber-200 flex items-start space-x-2">
+                            <svg className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                            <p className="text-xs font-medium text-amber-800 leading-snug">⚠ Maximum daily dose exceeded. Adjust to safe limit.</p>
+                          </div>
+                        )}
                         {result.singleDose ? (
-                          <div className="bg-white p-4 rounded-lg border border-blue-100/50 shadow-sm flex flex-col items-center justify-center text-center">
-                            <span className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1">Dose per administration</span>
-                            <span className="text-2xl font-bold text-blue-700">{result.singleDose}</span>
+                          <div className="bg-blue-50/50 p-6 rounded-xl border-2 border-blue-200 shadow-sm flex flex-col items-center justify-center text-center my-2">
+                            <span className="text-xs font-bold text-blue-600 uppercase tracking-widest mb-2">Calculated Dose</span>
+                            <div className="flex flex-col items-center gap-1">
+                              <span className="text-4xl font-black text-blue-700 leading-none">
+                                {result.singleDose}
+                              </span>
+                              <span className="text-lg font-bold text-blue-600 uppercase tracking-tight">
+                                {result.route} {result.frequencyPerDay}x Daily
+                              </span>
+                            </div>
                           </div>
                         ) : (
                           <div className="text-sm text-red-600 bg-red-50 p-3 rounded-lg">Dose information missing or unspecified for this selection.</div>
                         )}
 
-                        <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div className="grid grid-cols-2 gap-2 text-sm mt-2">
                           <div className="bg-white p-2.5 rounded-lg border border-slate-100 flex flex-col">
                             <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Route</span>
                             <span className="font-semibold text-slate-700">{result.route}</span>
@@ -994,6 +1074,47 @@ export default function Home() {
                   )}
                 </div>
 
+                {/* Load Recommended Prescription button */}
+                {diagnosis && diagnoses[diagnosis] && diagnoses[diagnosis].firstLine.length > 0 && (
+                  <div className="mb-4">
+                    <button
+                      onClick={() => {
+                        const ageNum = parseFloat(bAge);
+                        const weightNum = parseFloat(bWeight);
+                        if (!isNaN(ageNum) && ageNum > 0 && !isNaN(weightNum) && weightNum >= 1 && weightNum <= 200 && !(ageNum < 1 / 12 || weightNum < 3)) {
+                          diagnoses[diagnosis].firstLine.forEach((drugKey) => {
+                            const d = drugs[drugKey];
+                            if (d?.formulations?.length) {
+                              const preferredTypes = ageNum < 12 ? ["suspension", "syrup"] : ["tablet", "capsule"];
+                              const formulations = d.formulations.filter((f) => preferredTypes.some((t) => f.label.toLowerCase().includes(t)));
+                              const defaultFormulation = formulations.length ? formulations[0] : d.formulations[0];
+                              const formulationLabel = defaultFormulation.label;
+                              const res = calculateDose(ageNum, weightNum, drugKey, formulationLabel, null);
+                              if (res) {
+                                const newItem: PrescriptionItem = {
+                                  id: `rx-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                                  result: res,
+                                  drugKey,
+                                  formulationLabel,
+                                  durationDays: null,
+                                  patientAgeMonths: ageNum * 12,
+                                };
+                                setPrescription((prev) => [...prev, newItem]);
+                              }
+                            }
+                          });
+                        }
+                      }}
+                      className="w-full px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-sm rounded-lg transition-colors flex items-center justify-center gap-2"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      Load Recommended Prescription
+                    </button>
+                  </div>
+                )}
+
                 {diagnosis && diagnoses[diagnosis] ? (
                   <div className="space-y-4">
                     {[
@@ -1039,6 +1160,17 @@ export default function Home() {
                                   : null;
                               const doseStr = res?.singleDose ?? "—";
                               const freqStr = res ? `${res.frequencyPerDay}× daily` : "—";
+                              const maxDaily = allForms.find((f) => f.label === selectedFormLabel)?.maxMgPerDay;
+                              const minAgeMonths = allForms.find((f) => f.label === selectedFormLabel)?.minAgeMonths;
+                              const ageMonthsRec = ageNum * 12;
+                              const ageRestrictedRec =
+                                (res?.ageWarning ?? null) !== null ||
+                                (minAgeMonths !== null &&
+                                  minAgeMonths !== undefined &&
+                                  !isNaN(ageMonthsRec) &&
+                                  ageMonthsRec < minAgeMonths);
+                              const maxExceededRec =
+                                res?.totalDailyDose !== null && maxDaily !== null && maxDaily !== undefined && (res?.totalDailyDose ?? 0) > maxDaily;
 
                               if (!allForms.length) return [];
 
@@ -1075,18 +1207,29 @@ export default function Home() {
                                     </p>
                                   </div>
 
-                                  <div className="grid grid-cols-2 gap-2 mt-2">
-                                    <div className="bg-slate-50 rounded-lg px-3 py-2 flex flex-col">
-                                      <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Dose</span>
-                                      <span className="text-xs font-bold text-blue-700 mt-0.5 leading-snug">
+                                  <div className="mt-3 bg-blue-50/50 rounded-xl border-2 border-blue-100 p-3 flex flex-col items-center justify-center text-center shadow-sm">
+                                    <span className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mb-1">Calculated Dose</span>
+                                    <div className="flex flex-col items-center">
+                                      <span className="text-2xl font-black text-blue-700 leading-tight">
                                         {doseStr}
                                       </span>
-                                    </div>
-                                    <div className="bg-slate-50 rounded-lg px-3 py-2 flex flex-col">
-                                      <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Freq.</span>
-                                      <span className="text-xs font-semibold text-slate-700 mt-0.5">{freqStr}</span>
+                                      <span className="text-[11px] font-bold text-blue-600 uppercase tracking-tight">
+                                        {freqStr}
+                                      </span>
                                     </div>
                                   </div>
+
+                                  {ageRestrictedRec && (
+                                    <div className="mt-2 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2">
+                                      ⚠ This medication is not recommended for this age group.
+                                    </div>
+                                  )}
+
+                                  {maxExceededRec && (
+                                    <div className="mt-2 bg-amber-50 border border-amber-200 text-amber-800 text-xs rounded-lg px-3 py-2">
+                                      ⚠ Maximum daily dose exceeded. Adjust to safe limit.
+                                    </div>
+                                  )}
 
                                   <button
                                     type="button"
@@ -1147,18 +1290,24 @@ export default function Home() {
                 </div>
 
                 {interactionWarnings.length > 0 && (
-                  <div className="mb-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl px-4 py-3">
-                    <div className="flex items-start gap-2">
-                      <svg className="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                      </svg>
-                      <div className="min-w-0">
-                        <p className="text-xs font-semibold">Potential drug interactions detected</p>
-                        <ul className="mt-1 text-xs space-y-1">
+                  <div className="mb-4 bg-red-50 border border-red-200 text-red-800 rounded-xl px-4 py-3 shadow-sm">
+                    <div className="flex items-start gap-3">
+                      <div className="bg-red-100 rounded-full p-1.5 flex-shrink-0">
+                        <svg className="w-4 h-4 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-bold text-red-900 flex items-center gap-1.5">
+                          ⚠ Potential drug interaction detected.
+                        </p>
+                        <div className="mt-1.5 space-y-1.5">
                           {interactionWarnings.map((w, idx) => (
-                            <li key={idx} className="leading-snug">{w}</li>
+                            <div key={idx} className="bg-white/50 rounded-lg px-3 py-2 border border-red-100 text-xs leading-relaxed font-medium">
+                              {w}
+                            </div>
                           ))}
-                        </ul>
+                        </div>
                       </div>
                     </div>
                   </div>
