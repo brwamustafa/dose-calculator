@@ -15,6 +15,7 @@ interface PrescriptionItem {
   formulationLabel: string;
   durationDays: number | null;
   patientAgeMonths: number | null;
+  role?: string; // Medication role from treatment bundle (e.g., "Antibiotic", "Analgesic")
 }
 
 type ModalErrors = {
@@ -130,10 +131,12 @@ function PrescriptionCard({
   item,
   onEdit,
   onRemove,
+  showDetails,
 }: {
   item: PrescriptionItem;
   onEdit: () => void;
   onRemove: () => void;
+  showDetails: boolean;
 }) {
   const r = item.result;
   const formulation = drugs[item.drugKey]?.formulations?.find(
@@ -153,69 +156,85 @@ function PrescriptionCard({
       item.patientAgeMonths !== undefined &&
       item.patientAgeMonths < minAgeMonths);
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col gap-2 group relative">
-      {/* Header */}
+    <div className="bg-white border border-slate-200 rounded-lg p-3 shadow-sm group relative">
+      {/* Warnings - only show when details are expanded */}
+      {showDetails && (ageRestricted || maxExceeded) && (
+        <div className="flex gap-1 mb-2">
+          {ageRestricted && (
+            <div className="bg-red-50 border border-red-200 text-red-700 text-[10px] rounded px-1.5 py-0.5 flex items-center gap-1">
+              <span>⚠ Age Restricted</span>
+            </div>
+          )}
+          {maxExceeded && (
+            <div className="bg-amber-50 border border-amber-200 text-amber-800 text-[10px] rounded px-1.5 py-0.5 flex items-center gap-1">
+              <span>⚠ Max Dose Exceeded</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Simple warning indicator when details are hidden */}
+      {!showDetails && (ageRestricted || maxExceeded) && (
+        <div className="flex gap-1 mb-2">
+          {ageRestricted && (
+            <div className="bg-red-50 border border-red-200 text-red-700 text-[10px] rounded px-1.5 py-0.5 flex items-center gap-1">
+              <span>⚠ Age</span>
+            </div>
+          )}
+          {maxExceeded && (
+            <div className="bg-amber-50 border border-amber-200 text-amber-800 text-[10px] rounded px-1.5 py-0.5 flex items-center gap-1">
+              <span>⚠ Max</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Main content */}
       <div className="flex items-start justify-between gap-2">
-        <div>
-          <p className="font-semibold text-slate-800 text-sm leading-tight">{r.drugName}</p>
-          <p className="text-xs text-slate-500 mt-0.5">{r.formulationLabel}</p>
+        <div className="min-w-0 flex-1">
+          {item.role && (
+            <p className="text-[10px] font-medium text-slate-500 uppercase tracking-wider mb-1">
+              {item.role}
+            </p>
+          )}
+          <p className="font-semibold text-slate-800 text-sm leading-tight">
+            {r.drugName} {r.formulationLabel}
+          </p>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
+            <span className="text-lg font-black text-blue-700 leading-none">
+              {r.singleDose ?? "—"}
+            </span>
+            <span className="text-sm font-medium text-slate-600">
+              {r.route} {r.frequencyPerDay}× daily
+            </span>
+            {r.durationDays && (
+              <span className="text-sm text-slate-500">
+                · {r.durationDays} days
+              </span>
+            )}
+            {r.totalQuantity && (
+              <span className="text-sm text-slate-500">
+                · {r.totalQuantity}
+              </span>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
           <button
             onClick={onEdit}
-            className="text-xs px-2.5 py-1 rounded-md text-blue-600 bg-blue-50 hover:bg-blue-100 font-medium transition-colors"
+            className="text-xs px-2 py-1 rounded text-blue-600 bg-blue-50 hover:bg-blue-100 font-medium transition-colors"
             aria-label="Edit medication"
           >
             Edit
           </button>
           <button
             onClick={onRemove}
-            className="text-xs px-2.5 py-1 rounded-md text-red-500 bg-red-50 hover:bg-red-100 font-medium transition-colors"
+            className="text-xs px-2 py-1 rounded text-red-500 bg-red-50 hover:bg-red-100 font-medium transition-colors"
             aria-label="Remove medication"
           >
             Remove
           </button>
         </div>
-      </div>
-
-      {ageRestricted && (
-        <div className="bg-red-50 border border-red-200 text-red-700 text-[10px] rounded-lg px-2 py-1 flex items-center gap-1">
-          <span>⚠ Age Restricted</span>
-        </div>
-      )}
-
-      {maxExceeded && (
-        <div className="bg-amber-50 border border-amber-200 text-amber-800 text-[10px] rounded-lg px-2 py-1 flex items-center gap-1">
-          <span>⚠ Max Dose Exceeded</span>
-        </div>
-      )}
-
-      {/* Body */}
-      <div className="mt-3 bg-blue-50/30 rounded-xl border-2 border-blue-100/50 p-4 flex flex-col items-center justify-center text-center shadow-sm">
-        <span className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mb-1">Calculated Dose</span>
-        <div className="flex flex-col items-center">
-          <span className="text-3xl font-black text-blue-700 leading-tight">
-            {r.singleDose ?? "—"}
-          </span>
-          <span className="text-xs font-bold text-blue-600 uppercase tracking-tight">
-            {r.route} {r.frequencyPerDay}× daily
-          </span>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-2 mt-2">
-        <div className="bg-slate-50 rounded-lg px-3 py-2 flex flex-col">
-          <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Duration</span>
-          <span className="text-xs font-semibold text-slate-700 mt-0.5">
-            {r.durationDays ? `${r.durationDays} days` : "—"}
-          </span>
-        </div>
-        {r.totalQuantity && (
-          <div className="bg-slate-50 rounded-lg px-3 py-2 flex flex-col">
-            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Total</span>
-            <span className="text-xs font-bold text-slate-700 mt-0.5">{r.totalQuantity}</span>
-          </div>
-        )}
       </div>
     </div>
   );
@@ -529,6 +548,9 @@ export default function Home() {
 
   // ── Prescription state ────────────────────────────────────────────────────
   const [prescription, setPrescription] = useState<PrescriptionItem[]>([]);
+  const clearPrescription = () => {
+  setPrescription([]);
+};
   const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<PrescriptionItem | undefined>(undefined);
   const [copiedRx, setCopiedRx] = useState(false);
@@ -537,12 +559,11 @@ export default function Home() {
   const [bAge, setBAge] = useState<string>("");
   const [bWeight, setBWeight] = useState<string>("");
   const [diagnosis, setDiagnosis] = useState<string>("");
+  const [showDetails, setShowDetails] = useState<boolean>(false);
 
   // Add-medication search state (placeholder — no logic yet)
   const [addDrugKey, setAddDrugKey] = useState<string>("");
   const [addFormulation, setAddFormulation] = useState<string>("");
-
-  const [recFormulations, setRecFormulations] = useState<Record<string, string>>({});
 
   const drugOptions = Object.entries(drugs).map(([key, drug]) => ({
     value: key,
@@ -553,6 +574,13 @@ export default function Home() {
     value: key,
     label: d.name,
   }));
+
+  // ── Handlers ───────────────────────────────────────────────────────────────────
+  const handleDiagnosisChange = (newDiagnosis: string) => {
+    setDiagnosis(newDiagnosis);
+    // Clear prescription list when diagnosis changes
+    setPrescription([]);
+  };
 
   // ── Main calculator handlers ──────────────────────────────────────────────
   const handleDrugSelect = (key: string) => {
@@ -705,30 +733,6 @@ export default function Home() {
     setAddDrugKey("");
     setAddFormulation("");
   };
-
-  const addRecommendationToPrescription = useCallback(
-    (drugKey: string, formulationLabel: string) => {
-      const ageNum = parseFloat(bAge);
-      const weightNum = parseFloat(bWeight);
-      if (isNaN(ageNum) || ageNum <= 0) return;
-      if (isNaN(weightNum) || weightNum < 1 || weightNum > 200) return;
-      if (ageNum < 1 / 12 || weightNum < 3) return;
-
-      const res = calculateDose(ageNum, weightNum, drugKey, formulationLabel, null);
-      if (!res) return;
-
-      const newItem: PrescriptionItem = {
-        id: `rx-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        result: res,
-        drugKey,
-        formulationLabel,
-        durationDays: null,
-        patientAgeMonths: ageNum * 12,
-      };
-      setPrescription((prev) => [...prev, newItem]);
-    },
-    [bAge, bWeight]
-  );
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
@@ -1054,198 +1058,96 @@ export default function Home() {
                   <SearchableSelect
                     options={diagnosisOptions}
                     value={diagnosis}
-                    onChange={setDiagnosis}
+                    onChange={handleDiagnosisChange}
                     placeholder="Search diagnosis (e.g. Otitis Media)..."
                   />
                 </div>
               </div>
 
-              {/* ─── Section 1: Recommended Medications ────────────────────── */}
+              {/* ─── Section 1: Recommended Treatment ────────────────────── */}
               <div className="px-6 py-5">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <svg className="w-4 h-4 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                     </svg>
-                    <h3 className="text-sm font-semibold text-slate-700">Recommended Medications</h3>
+                    <h3 className="text-sm font-semibold text-slate-700">Recommended Treatment</h3>
                   </div>
                   {diagnosis && diagnoses[diagnosis] && (
                     <span className="text-[11px] text-slate-400 italic truncate max-w-[140px]">{diagnoses[diagnosis].name}</span>
                   )}
                 </div>
 
-                {/* Load Recommended Prescription button */}
-                {diagnosis && diagnoses[diagnosis] && diagnoses[diagnosis].firstLine.length > 0 && (
-                  <div className="mb-4">
-                    <button
-                      onClick={() => {
-                        const ageNum = parseFloat(bAge);
-                        const weightNum = parseFloat(bWeight);
-                        if (!isNaN(ageNum) && ageNum > 0 && !isNaN(weightNum) && weightNum >= 1 && weightNum <= 200 && !(ageNum < 1 / 12 || weightNum < 3)) {
-                          diagnoses[diagnosis].firstLine.forEach((drugKey) => {
-                            const d = drugs[drugKey];
-                            if (d?.formulations?.length) {
-                              const preferredTypes = ageNum < 12 ? ["suspension", "syrup"] : ["tablet", "capsule"];
-                              const formulations = d.formulations.filter((f) => preferredTypes.some((t) => f.label.toLowerCase().includes(t)));
-                              const defaultFormulation = formulations.length ? formulations[0] : d.formulations[0];
-                              const formulationLabel = defaultFormulation.label;
-                              const res = calculateDose(ageNum, weightNum, drugKey, formulationLabel, null);
-                              if (res) {
-                                const newItem: PrescriptionItem = {
-                                  id: `rx-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-                                  result: res,
-                                  drugKey,
-                                  formulationLabel,
-                                  durationDays: null,
-                                  patientAgeMonths: ageNum * 12,
-                                };
-                                setPrescription((prev) => [...prev, newItem]);
-                              }
-                            }
-                          });
-                        }
-                      }}
-                      className="w-full px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-sm rounded-lg transition-colors flex items-center justify-center gap-2"
-                    >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
-                      Load Recommended Prescription
-                    </button>
-                  </div>
-                )}
-
                 {diagnosis && diagnoses[diagnosis] ? (
                   <div className="space-y-4">
-                    {[
-                      { label: "First Line", items: diagnoses[diagnosis].firstLine, color: "text-emerald-600", bg: "bg-emerald-50" },
-                      { label: "Second Line", items: diagnoses[diagnosis].secondLine, color: "text-blue-600", bg: "bg-blue-50" },
-                      { label: "Alternatives", items: diagnoses[diagnosis].alternatives, color: "text-slate-600", bg: "bg-slate-50" },
-                    ].map((section, idx) => (
-                      section.items.length > 0 && (
-                        <div key={idx} className="space-y-1.5">
-                          <p className={`text-[10px] uppercase font-bold tracking-wider ${section.color}`}>{section.label}</p>
-                          <div className="space-y-2">
-                            {section.items.flatMap((drugKey) => {
+                    {/* Load Recommended Prescription button */}
+                    {diagnoses[diagnosis].recommendedBundle.length > 0 && (
+                      <button
+                        onClick={() => {
+                          const ageNum = parseFloat(bAge);
+                          const weightNum = parseFloat(bWeight);
+                          if (isNaN(ageNum) || ageNum <= 0) return;
+                          if (isNaN(weightNum) || weightNum < 1 || weightNum > 200) return;
+                          if (ageNum < 1 / 12 || weightNum < 3) return;
+
+                          const diag = diagnoses[diagnosis];
+
+                          setPrescription((prev) => {
+                            const existing = new Set(prev.map((p) => p.drugKey));
+                            const newItems: PrescriptionItem[] = [];
+
+                            for (const bundleItem of diag.recommendedBundle) {
+                              const drugKey = bundleItem.drug;
+                              if (existing.has(drugKey)) continue;
+
                               const d = drugs[drugKey];
-                              const ageNum = parseFloat(bAge);
-                              const weightNum = parseFloat(bWeight);
-                              const canCalc =
-                                !isNaN(ageNum) &&
-                                ageNum > 0 &&
-                                !isNaN(weightNum) &&
-                                weightNum >= 1 &&
-                                weightNum <= 200 &&
-                                !(ageNum < 1 / 12 || weightNum < 3);
-                              const preferredTypes = !isNaN(ageNum) && ageNum < 12
-                                ? ["suspension"]
-                                : ["tablet", "capsule"];
+                              if (!d?.formulations?.length) continue;
 
-                              const preferredFormulationLabel = !isNaN(ageNum) && ageNum < 12
-                                ? "Preferred formulation for pediatric patients"
-                                : "Preferred formulation for adults";
-
-                              const pickDefaultFormulation = (formulations: typeof d.formulations) => {
-                                const match = formulations.find((f) => preferredTypes.includes(f.type));
-                                return match ?? formulations[0];
-                              };
-
-                              const allForms = d?.formulations ?? [];
-                              const defaultFormLabel = allForms.length ? pickDefaultFormulation(allForms).label : "";
-                              const selectedFormLabel = recFormulations[drugKey] ?? defaultFormLabel;
-
-                              const res =
-                                canCalc && selectedFormLabel
-                                  ? calculateDose(ageNum, weightNum, drugKey, selectedFormLabel, null)
-                                  : null;
-                              const doseStr = res?.singleDose ?? "—";
-                              const freqStr = res ? `${res.frequencyPerDay}× daily` : "—";
-                              const maxDaily = allForms.find((f) => f.label === selectedFormLabel)?.maxMgPerDay;
-                              const minAgeMonths = allForms.find((f) => f.label === selectedFormLabel)?.minAgeMonths;
-                              const ageMonthsRec = ageNum * 12;
-                              const ageRestrictedRec =
-                                (res?.ageWarning ?? null) !== null ||
-                                (minAgeMonths !== null &&
-                                  minAgeMonths !== undefined &&
-                                  !isNaN(ageMonthsRec) &&
-                                  ageMonthsRec < minAgeMonths);
-                              const maxExceededRec =
-                                res?.totalDailyDose !== null && maxDaily !== null && maxDaily !== undefined && (res?.totalDailyDose ?? 0) > maxDaily;
-
-                              if (!allForms.length) return [];
-
-                              return (
-                                <div
-                                  key={`${drugKey}::recommended`}
-                                  className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm"
-                                >
-                                  <div className="flex items-start justify-between gap-3">
-                                    <div className="min-w-0">
-                                      <p className="text-sm font-semibold text-slate-800 leading-tight truncate">
-                                        {d?.name || drugKey}
-                                      </p>
-                                    </div>
-                                    <span className={`mt-1 w-1.5 h-1.5 rounded-full flex-shrink-0 ${section.color.replace("text", "bg")}`} />
-                                  </div>
-
-                                  <div className="mt-2">
-                                    <select
-                                      value={selectedFormLabel}
-                                      onChange={(e) =>
-                                        setRecFormulations((prev) => ({ ...prev, [drugKey]: e.target.value }))
-                                      }
-                                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-                                    >
-                                      {allForms.map((f) => (
-                                        <option key={f.id ?? f.label} value={f.label}>
-                                          {f.label}
-                                        </option>
-                                      ))}
-                                    </select>
-                                    <p className="text-[11px] text-slate-400 mt-1">
-                                      {preferredFormulationLabel}
-                                    </p>
-                                  </div>
-
-                                  <div className="mt-3 bg-blue-50/50 rounded-xl border-2 border-blue-100 p-3 flex flex-col items-center justify-center text-center shadow-sm">
-                                    <span className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mb-1">Calculated Dose</span>
-                                    <div className="flex flex-col items-center">
-                                      <span className="text-2xl font-black text-blue-700 leading-tight">
-                                        {doseStr}
-                                      </span>
-                                      <span className="text-[11px] font-bold text-blue-600 uppercase tracking-tight">
-                                        {freqStr}
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  {ageRestrictedRec && (
-                                    <div className="mt-2 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2">
-                                      ⚠ This medication is not recommended for this age group.
-                                    </div>
-                                  )}
-
-                                  {maxExceededRec && (
-                                    <div className="mt-2 bg-amber-50 border border-amber-200 text-amber-800 text-xs rounded-lg px-3 py-2">
-                                      ⚠ Maximum daily dose exceeded. Adjust to safe limit.
-                                    </div>
-                                  )}
-
-                                  <button
-                                    type="button"
-                                    onClick={() => addRecommendationToPrescription(drugKey, selectedFormLabel)}
-                                    disabled={!canCalc}
-                                    className="mt-2 w-full py-2 px-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors text-xs"
-                                  >
-                                    Add to Prescription
-                                  </button>
-                                </div>
+                              const preferredTypes = ageNum < 12 ? ["suspension", "syrup"] : ["tablet", "capsule"];
+                              const formulations = d.formulations.filter((f) =>
+                                preferredTypes.some((t) => f.label.toLowerCase().includes(t))
                               );
-                            })}
-                          </div>
-                        </div>
-                      )
-                    ))}
+                              const defaultFormulation = formulations.length ? formulations[0] : d.formulations[0];
+                              const formulationLabel = defaultFormulation.label;
+
+                              const res = calculateDose(ageNum, weightNum, drugKey, formulationLabel, null);
+                              if (!res) continue;
+
+                              newItems.push({
+                                id: `rx-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                                result: res,
+                                drugKey,
+                                formulationLabel,
+                                durationDays: null,
+                                patientAgeMonths: ageNum * 12,
+                                role: bundleItem.role,
+                              });
+                            }
+
+                            return newItems.length ? [...prev, ...newItems] : prev;
+                          });
+                        }}
+                        className="w-full px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-sm rounded-lg transition-colors flex items-center justify-center gap-2"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                        Load Recommended Prescription
+                      </button>
+                    )}
+
+                    {/* Compact recommended medications list */}
+                    <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                      <h4 className="text-xs font-semibold text-slate-600 uppercase tracking-wider mb-3">Recommended treatment:</h4>
+                      <ul className="space-y-1 text-sm text-slate-700">
+                        {diagnoses[diagnosis].recommendedBundle.map((item) => (
+                          <li key={item.drug} className="flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-slate-400 flex-shrink-0" />
+                            <span>{drugs[item.drug]?.name || item.drug} ({item.role})</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   </div>
                 ) : (
                   <div className="bg-slate-50 border border-dashed border-slate-200 rounded-xl px-4 py-8 text-center">
@@ -1276,20 +1178,47 @@ export default function Home() {
                     )}
                   </div>
                   {prescription.length > 0 && (
-                    <button
-                      onClick={copyPrescription}
-                      className="text-xs text-slate-500 hover:text-blue-600 flex items-center gap-1 transition-colors"
-                    >
-                      {copiedRx ? (
-                        <><svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>Copied!</>
-                      ) : (
-                        <><svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>Copy all</>
-                      )}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={copyPrescription}
+                        className="text-xs text-slate-500 hover:text-blue-600 flex items-center gap-1 transition-colors"
+                      >
+                        {copiedRx ? (
+                          <><svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>Copied!</>
+                        ) : (
+                          <><svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>Copy all</>
+                        )}
+                      </button>
+                      <button
+                        onClick={clearPrescription}
+                        className="text-xs px-2.5 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-700 font-medium transition-colors"
+                      >
+                        Clear All
+                      </button>
+                    </div>
                   )}
                 </div>
 
-                {interactionWarnings.length > 0 && (
+                {/* Show details toggle */}
+                <div className="flex justify-end mb-3">
+                  <button
+                    onClick={() => setShowDetails(!showDetails)}
+                    className="text-xs text-slate-500 hover:text-slate-700 flex items-center gap-1.5 transition-colors"
+                  >
+                    <svg 
+                      className={`w-3.5 h-3.5 transition-transform duration-200 ${showDetails ? 'rotate-90' : ''}`} 
+                      fill="none" 
+                      viewBox="0 0 24 24" 
+                      stroke="currentColor"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                    {showDetails ? 'Hide details' : 'Show details'}
+                  </button>
+                </div>
+
+                {/* Interaction warnings - only show when details are expanded */}
+                {showDetails && interactionWarnings.length > 0 && (
                   <div className="mb-4 bg-red-50 border border-red-200 text-red-800 rounded-xl px-4 py-3 shadow-sm">
                     <div className="flex items-start gap-3">
                       <div className="bg-red-100 rounded-full p-1.5 flex-shrink-0">
@@ -1313,6 +1242,18 @@ export default function Home() {
                   </div>
                 )}
 
+                {/* Simple interaction alert when details are hidden */}
+                {!showDetails && interactionWarnings.length > 0 && (
+                  <div className="mb-4 bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 flex items-center gap-2">
+                    <svg className="w-4 h-4 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <span className="text-sm font-medium">
+                      {interactionWarnings.length} potential drug interaction{interactionWarnings.length > 1 ? 's' : ''} detected
+                    </span>
+                  </div>
+                )}
+
                 {prescription.length === 0 ? (
                   <div className="bg-slate-50 border border-dashed border-slate-200 rounded-xl px-4 py-6 text-center">
                     <p className="text-sm text-slate-400">No medications added yet</p>
@@ -1325,6 +1266,7 @@ export default function Home() {
                         item={item}
                         onEdit={() => openEditModal(item)}
                         onRemove={() => removeItem(item.id)}
+                        showDetails={showDetails}
                       />
                     ))}
                   </div>
@@ -1332,7 +1274,7 @@ export default function Home() {
               </div>
 
               {/* ─── Section 3: Add Medication (manual search) ────────────── */}
-              <div className="px-6 py-5">
+              <div id="add-medication-section" className="px-6 py-5">
                 <div className="flex items-center gap-2 mb-3">
                   <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -1396,6 +1338,34 @@ export default function Home() {
               </div>
 
             </div>
+          )}
+
+          {/* Floating Add Medication Button - Builder Mode Only */}
+          {mode === "builder" && (
+            <button
+              onClick={() => {
+                const addSection = document.getElementById("add-medication-section");
+                if (addSection) {
+                  addSection.scrollIntoView({ behavior: "smooth", block: "center" });
+                  // Focus on the search input after scroll
+                  setTimeout(() => {
+                    const searchInput = document.getElementById("add-medication-search") as HTMLInputElement;
+                    if (searchInput) {
+                      searchInput.focus();
+                    }
+                  }, 500);
+                }
+              }}
+              className="fixed bottom-6 right-6 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center group z-50"
+              aria-label="Add medication"
+            >
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+              </svg>
+              <span className="absolute right-full mr-3 top-1/2 -translate-y-1/2 bg-slate-800 text-white text-xs px-3 py-2 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none">
+                Add Medication
+              </span>
+            </button>
           )}
 
         </div>

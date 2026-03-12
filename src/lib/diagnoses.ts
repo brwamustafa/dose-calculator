@@ -1,39 +1,49 @@
 export interface Diagnosis {
     name: string;
-    firstLine: string[];
-    secondLine: string[];
-    alternatives: string[];
+    recommendedBundle: Array<{
+        role: string;
+        drug: string;
+    }>;
 }
 
 export const diagnoses: Record<string, Diagnosis> = {
     acute_otitis_media: {
         name: "Acute Otitis Media",
-        firstLine: ["amoxicillin"],
-        secondLine: ["amoxicillin-clavulanate"],
-        alternatives: ["azithromycin", "cefuroxime"],
+        recommendedBundle: [
+            { role: "Antibiotic", drug: "amoxicillin" },
+            { role: "Analgesic", drug: "paracetamol" },
+            { role: "Adjunct", drug: "mometasone" }
+        ]
     },
     acute_sinusitis: {
         name: "Acute Sinusitis",
-        firstLine: ["amoxicillin"],
-        secondLine: ["amoxicillin-clavulanate"],
-        alternatives: ["cefuroxime", "azithromycin"],
+        recommendedBundle: [
+            { role: "Antibiotic", drug: "amoxicillin" },
+            { role: "Analgesic", drug: "paracetamol" },
+            { role: "Decongestant", drug: "oxymetazoline" }
+        ]
     },
     otitis_externa: {
         name: "Otitis Externa",
-        firstLine: ["ciprofloxacin"],
-        secondLine: ["acetic-acid-otic"],
-        alternatives: ["clotrimazole-otic"],
+        recommendedBundle: [
+            { role: "Antibiotic", drug: "ciprofloxacin" },
+            { role: "Antiseptic", drug: "acetic-acid-otic" }
+        ]
     },
     allergic_rhinitis: {
         name: "Allergic Rhinitis",
-        firstLine: ["cetirizine", "loratadine"],
-        secondLine: ["mometasone", "fluticasone"],
-        alternatives: ["fexofenadine", "oxymetazoline"],
+        recommendedBundle: [
+            { role: "Antihistamine", drug: "cetirizine" },
+            { role: "Steroid", drug: "mometasone" },
+            { role: "Decongestant", drug: "oxymetazoline" }
+        ]
     },
     tonsillitis: {
         name: "Tonsillitis",
-        firstLine: ["amoxicillin"],
-        secondLine: ["cefuroxime"],
-        alternatives: ["azithromycin"],
+        recommendedBundle: [
+            { role: "Antibiotic", drug: "amoxicillin" },
+            { role: "Analgesic", drug: "paracetamol" },
+            { role: "Anti-inflammatory", drug: "ibuprofen" }
+        ]
     },
 };
