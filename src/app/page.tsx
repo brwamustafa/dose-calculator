@@ -3,20 +3,10 @@
 import { useState, useCallback, useMemo } from "react";
 import { drugs } from "@/lib/drugs";
 import { diagnoses } from "@/lib/diagnoses";
-import { calculateDose, DoseResult } from "@/lib/calculateDose";
+import { calculateDose, DoseResult } from "@/lib/dosing";
+import { buildPrescription, buildManualPrescriptionItem, type PrescriptionItem } from "@/lib/prescriptionEngine";
+import { checkInteractions } from "@/lib/interactions";
 import SearchableSelect from "@/components/SearchableSelect";
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-interface PrescriptionItem {
-  id: string;
-  result: DoseResult;
-  drugKey: string;
-  formulationLabel: string;
-  durationDays: number | null;
-  patientAgeMonths: number | null;
-  role?: string; // Medication role from treatment bundle (e.g., "Antibiotic", "Analgesic")
-}
 
 type ModalErrors = {
   age?: string;
@@ -38,33 +28,6 @@ const TYPE_LABEL: Record<string, string> = {
   spray: "Nasal Spray",
   infusion: "IV Infusion",
   injection: "Injection",
-};
-
-const KNOWN_INTERACTIONS: Record<string, Record<string, string>> = {
-  cetirizine: {
-    loratadine: "Duplicate antihistamine therapy; increased sedation/dryness risk.",
-    fexofenadine: "Duplicate antihistamine therapy; increased side effects risk.",
-  },
-  loratadine: {
-    cetirizine: "Duplicate antihistamine therapy; increased sedation/dryness risk.",
-    fexofenadine: "Duplicate antihistamine therapy; increased side effects risk.",
-  },
-  fexofenadine: {
-    cetirizine: "Duplicate antihistamine therapy; increased side effects risk.",
-    loratadine: "Duplicate antihistamine therapy; increased side effects risk.",
-  },
-  fluticasone: {
-    mometasone: "Duplicate intranasal corticosteroids; increased local steroid adverse effects.",
-  },
-  mometasone: {
-    fluticasone: "Duplicate intranasal corticosteroids; increased local steroid adverse effects.",
-  },
-  amoxicillin: {
-    "amoxicillin-clavulanate": "Duplicate penicillin antibiotic coverage; increased adverse effects risk.",
-  },
-  "amoxicillin-clavulanate": {
-    amoxicillin: "Duplicate penicillin antibiotic coverage; increased adverse effects risk.",
-  },
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -156,10 +119,10 @@ function PrescriptionCard({
       item.patientAgeMonths !== undefined &&
       item.patientAgeMonths < minAgeMonths);
   return (
-    <div className="bg-white border border-slate-200 rounded-lg p-3 shadow-sm group relative">
+    <div className="bg-white border border-slate-200 rounded-lg p-2 shadow-sm group relative">
       {/* Warnings - only show when details are expanded */}
       {showDetails && (ageRestricted || maxExceeded) && (
-        <div className="flex gap-1 mb-2">
+        <div className="flex gap-1 mb-1.5">
           {ageRestricted && (
             <div className="bg-red-50 border border-red-200 text-red-700 text-[10px] rounded px-1.5 py-0.5 flex items-center gap-1">
               <span>⚠ Age Restricted</span>
@@ -175,7 +138,7 @@ function PrescriptionCard({
 
       {/* Simple warning indicator when details are hidden */}
       {!showDetails && (ageRestricted || maxExceeded) && (
-        <div className="flex gap-1 mb-2">
+        <div className="flex gap-1 mb-1.5">
           {ageRestricted && (
             <div className="bg-red-50 border border-red-200 text-red-700 text-[10px] rounded px-1.5 py-0.5 flex items-center gap-1">
               <span>⚠ Age</span>
@@ -193,43 +156,38 @@ function PrescriptionCard({
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           {item.role && (
-            <p className="text-[10px] font-medium text-slate-500 uppercase tracking-wider mb-1">
+            <p className="text-[10px] font-medium text-slate-500 uppercase tracking-wider mb-0.5">
               {item.role}
             </p>
           )}
-          <p className="font-semibold text-slate-800 text-sm leading-tight">
-            {r.drugName} {r.formulationLabel}
-          </p>
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
-            <span className="text-lg font-black text-blue-700 leading-none">
-              {r.singleDose ?? "—"}
-            </span>
-            <span className="text-sm font-medium text-slate-600">
-              {r.route} {r.frequencyPerDay}× daily
-            </span>
+          <div className="space-y-0.5">
+            <p className="font-semibold text-slate-800 text-sm leading-tight truncate">
+              {r.drugName}
+            </p>
+            <p className="text-xs text-slate-600 leading-tight truncate">
+              {r.formulationLabel}
+            </p>
+            <p className="text-xs text-slate-700 leading-tight">
+              {(r.singleDose ?? "—")} · {r.route} · {r.frequencyPerDay}× daily
+            </p>
             {r.durationDays && (
-              <span className="text-sm text-slate-500">
-                · {r.durationDays} days
-              </span>
-            )}
-            {r.totalQuantity && (
-              <span className="text-sm text-slate-500">
-                · {r.totalQuantity}
-              </span>
+              <p className="text-xs text-slate-500 leading-tight">
+                Duration: {r.durationDays} days
+              </p>
             )}
           </div>
         </div>
-        <div className="flex items-center gap-1.5 flex-shrink-0">
+        <div className="flex items-center gap-1 flex-shrink-0">
           <button
             onClick={onEdit}
-            className="text-xs px-2 py-1 rounded text-blue-600 bg-blue-50 hover:bg-blue-100 font-medium transition-colors"
+            className="text-[11px] px-2 py-1 rounded text-blue-600 bg-blue-50 hover:bg-blue-100 font-medium transition-colors"
             aria-label="Edit medication"
           >
             Edit
           </button>
           <button
             onClick={onRemove}
-            className="text-xs px-2 py-1 rounded text-red-500 bg-red-50 hover:bg-red-100 font-medium transition-colors"
+            className="text-[11px] px-2 py-1 rounded text-red-500 bg-red-50 hover:bg-red-100 font-medium transition-colors"
             aria-label="Remove medication"
           >
             Remove
@@ -690,23 +648,7 @@ export default function Home() {
     selectedFormulationMax !== undefined &&
     (result?.totalDailyDose ?? 0) > selectedFormulationMax;
 
-  const interactionWarnings = useMemo(() => {
-    if (prescription.length < 2) return [] as string[];
-    const warnings: string[] = [];
-    for (let i = 0; i < prescription.length; i++) {
-      for (let j = i + 1; j < prescription.length; j++) {
-        const a = prescription[i].drugKey;
-        const b = prescription[j].drugKey;
-        const msg = KNOWN_INTERACTIONS[a]?.[b] ?? KNOWN_INTERACTIONS[b]?.[a] ?? null;
-        if (msg) {
-          const aName = drugs[a]?.name ?? a;
-          const bName = drugs[b]?.name ?? b;
-          warnings.push(`${aName} + ${bName}: ${msg}`);
-        }
-      }
-    }
-    return warnings;
-  }, [prescription]);
+  const interactionWarnings = useMemo(() => checkInteractions(prescription), [prescription]);
 
   const addManualMedication = () => {
     const ageNum = parseFloat(bAge);
@@ -716,19 +658,11 @@ export default function Home() {
     if (ageNum < 1 / 12 || weightNum < 3) return;
     if (!addDrugKey || !addFormulation) return;
 
-    const res = calculateDose(ageNum, weightNum, addDrugKey, addFormulation, null);
-    if (!res) return;
+    const newItem = buildManualPrescriptionItem(addDrugKey, addFormulation, ageNum, weightNum);
+    if (!newItem) return;
 
-    const newItem: PrescriptionItem = {
-      id: `rx-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      result: res,
-      drugKey: addDrugKey,
-      formulationLabel: addFormulation,
-      durationDays: null,
-      patientAgeMonths: ageNum * 12,
-    };
     setPrescription((prev) => [...prev, newItem]);
-    
+
     // Reset form
     setAddDrugKey("");
     setAddFormulation("");
@@ -1090,41 +1024,11 @@ export default function Home() {
                           if (isNaN(weightNum) || weightNum < 1 || weightNum > 200) return;
                           if (ageNum < 1 / 12 || weightNum < 3) return;
 
-                          const diag = diagnoses[diagnosis];
-
                           setPrescription((prev) => {
                             const existing = new Set(prev.map((p) => p.drugKey));
-                            const newItems: PrescriptionItem[] = [];
-
-                            for (const bundleItem of diag.recommendedBundle) {
-                              const drugKey = bundleItem.drug;
-                              if (existing.has(drugKey)) continue;
-
-                              const d = drugs[drugKey];
-                              if (!d?.formulations?.length) continue;
-
-                              const preferredTypes = ageNum < 12 ? ["suspension", "syrup"] : ["tablet", "capsule"];
-                              const formulations = d.formulations.filter((f) =>
-                                preferredTypes.some((t) => f.label.toLowerCase().includes(t))
-                              );
-                              const defaultFormulation = formulations.length ? formulations[0] : d.formulations[0];
-                              const formulationLabel = defaultFormulation.label;
-
-                              const res = calculateDose(ageNum, weightNum, drugKey, formulationLabel, null);
-                              if (!res) continue;
-
-                              newItems.push({
-                                id: `rx-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-                                result: res,
-                                drugKey,
-                                formulationLabel,
-                                durationDays: null,
-                                patientAgeMonths: ageNum * 12,
-                                role: bundleItem.role,
-                              });
-                            }
-
-                            return newItems.length ? [...prev, ...newItems] : prev;
+                            const built = buildPrescription(diagnosis, ageNum, weightNum);
+                            const filtered = built.filter((item) => !existing.has(item.drugKey));
+                            return filtered.length ? [...prev, ...filtered] : prev;
                           });
                         }}
                         className="w-full px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-sm rounded-lg transition-colors flex items-center justify-center gap-2"
@@ -1170,12 +1074,12 @@ export default function Home() {
                     <svg className="w-4 h-4 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
-                    <h3 className="text-sm font-semibold text-slate-700">Prescription</h3>
-                    {prescription.length > 0 && (
-                      <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-700">
-                        {prescription.length}
+                    <h3 className="text-sm font-semibold text-slate-700">
+                      Prescription{" "}
+                      <span className="font-medium text-slate-500">
+                        ({prescription.length} medication{prescription.length === 1 ? "" : "s"})
                       </span>
-                    )}
+                    </h3>
                   </div>
                   {prescription.length > 0 && (
                     <div className="flex items-center gap-2">
