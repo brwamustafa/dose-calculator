@@ -152,6 +152,20 @@ function PrescriptionCard({
         </div>
       )}
 
+      {/* Renal Warning */}
+      {showDetails && item.renalImpairment && (
+        <div className="mb-1.5 bg-amber-50 border border-amber-200 text-amber-800 text-[10px] rounded px-2 py-1 flex items-center gap-1 font-medium">
+          <span>⚠ Renal dose adjustment may be required.</span>
+        </div>
+      )}
+
+      {/* Pregnancy Warning */}
+      {showDetails && item.pregnancy && (
+        <div className="mb-1.5 bg-amber-50 border border-amber-200 text-amber-800 text-[10px] rounded px-2 py-1 flex items-center gap-1 font-medium">
+          <span>⚠ Check pregnancy safety for prescribed medications.</span>
+        </div>
+      )}
+
       {/* Main content */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
@@ -204,12 +218,16 @@ function MedicationModal({
   initialItem,
   patientAge,
   patientWeight,
+  renalImpairment,
+  pregnancy,
   onClose,
   onSave,
 }: {
   initialItem?: PrescriptionItem;
   patientAge: string;
   patientWeight: string;
+  renalImpairment: boolean;
+  pregnancy: boolean;
   onClose: () => void;
   onSave: (item: Omit<PrescriptionItem, "id">) => void;
 }) {
@@ -275,6 +293,8 @@ function MedicationModal({
       formulationLabel: mFormulation,
       durationDays: mDuration ? parseFloat(mDuration) : null,
       patientAgeMonths: !isNaN(ageNum) && ageNum > 0 ? ageNum * 12 : null,
+      renalImpairment: initialItem?.renalImpairment ?? renalImpairment,
+      pregnancy: initialItem?.pregnancy ?? pregnancy,
     });
   };
 
@@ -463,6 +483,20 @@ function MedicationModal({
                 </div>
               )}
 
+              {/* Renal impairment notice */}
+              {(initialItem?.renalImpairment || (patientAge && patientAge.length > 0 && renalImpairment)) && (
+                <div className="bg-amber-50 border border-amber-200 text-amber-800 text-[11px] rounded-lg px-3 py-2 font-medium">
+                  ⚠ Renal dose adjustment may be required.
+                </div>
+              )}
+
+              {/* Pregnancy safety notice */}
+              {(initialItem?.pregnancy || pregnancy) && (
+                <div className="bg-amber-50 border border-amber-200 text-amber-800 text-[11px] rounded-lg px-3 py-2 font-medium">
+                  ⚠ Check pregnancy safety for prescribed medications.
+                </div>
+              )}
+
               {/* Add to Prescription button */}
               <button
                 type="button"
@@ -517,7 +551,22 @@ export default function Home() {
   const [bAge, setBAge] = useState<string>("");
   const [bWeight, setBWeight] = useState<string>("");
   const [diagnosis, setDiagnosis] = useState<string>("");
+  const [selectedBundle, setSelectedBundle] = useState<number>(0);
   const [showDetails, setShowDetails] = useState<boolean>(false);
+  const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
+  const [allergies, setAllergies] = useState<string>("");
+  const [chronicConditions, setChronicConditions] = useState<string>("");
+  const [renalImpairment, setRenalImpairment] = useState<boolean>(false);
+  const [chronicMedications, setChronicMedications] = useState<string[]>([]);
+  const [chronicMedPicker, setChronicMedPicker] = useState<string>("");
+  const [pregnancy, setPregnancy] = useState<boolean>(false);
+
+  const isAdvancedActive =
+    allergies.length > 0 ||
+    chronicConditions.length > 0 ||
+    renalImpairment ||
+    pregnancy ||
+    chronicMedications.length > 0;
 
   // Add-medication search state (placeholder — no logic yet)
   const [addDrugKey, setAddDrugKey] = useState<string>("");
@@ -536,6 +585,7 @@ export default function Home() {
   // ── Handlers ───────────────────────────────────────────────────────────────────
   const handleDiagnosisChange = (newDiagnosis: string) => {
     setDiagnosis(newDiagnosis);
+    setSelectedBundle(0);
     // Clear prescription list when diagnosis changes
     setPrescription([]);
   };
@@ -648,7 +698,10 @@ export default function Home() {
     selectedFormulationMax !== undefined &&
     (result?.totalDailyDose ?? 0) > selectedFormulationMax;
 
-  const interactionWarnings = useMemo(() => checkInteractions(prescription), [prescription]);
+  const interactionWarnings = useMemo(
+    () => checkInteractions(prescription, chronicMedications),
+    [prescription, chronicMedications]
+  );
 
   const addManualMedication = () => {
     const ageNum = parseFloat(bAge);
@@ -658,7 +711,7 @@ export default function Home() {
     if (ageNum < 1 / 12 || weightNum < 3) return;
     if (!addDrugKey || !addFormulation) return;
 
-    const newItem = buildManualPrescriptionItem(addDrugKey, addFormulation, ageNum, weightNum);
+    const newItem = buildManualPrescriptionItem(addDrugKey, addFormulation, ageNum, weightNum, renalImpairment, pregnancy);
     if (!newItem) return;
 
     setPrescription((prev) => [...prev, newItem]);
@@ -676,6 +729,8 @@ export default function Home() {
           initialItem={editingItem}
           patientAge={mode === "builder" ? bAge : age}
           patientWeight={mode === "builder" ? bWeight : weight}
+          renalImpairment={renalImpairment}
+          pregnancy={pregnancy}
           onClose={() => { setModalOpen(false); setEditingItem(undefined); }}
           onSave={handleModalSave}
         />
@@ -757,6 +812,138 @@ export default function Home() {
                   </div>
                 </div>
 
+                {/* Advanced Patient Settings Toggle (Calculator Mode) */}
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowAdvanced(!showAdvanced)}
+                    className="flex items-center gap-2 text-xs font-semibold text-slate-500 hover:text-slate-800 transition-colors uppercase tracking-wider"
+                  >
+                    <svg
+                      className={`w-3.5 h-3.5 transition-transform duration-200 ${showAdvanced ? "rotate-90" : ""}`}
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                    </svg>
+                    Advanced Patient Settings
+                    {isAdvancedActive && (
+                      <span className="ml-1 text-emerald-600 font-bold lowercase">
+                        (active)
+                      </span>
+                    )}
+                  </button>
+
+                  {showAdvanced && (
+                    <div className="mt-4 space-y-4 pt-4 border-t border-slate-100 animate-in fade-in slide-in-from-top-2 duration-200">
+                      <div className="space-y-1.5">
+                        <label htmlFor="c-allergies" className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                          Allergies
+                        </label>
+                        <input
+                          id="c-allergies"
+                          type="text"
+                          value={allergies}
+                          onChange={(e) => setAllergies(e.target.value)}
+                          placeholder="e.g. Penicillin, NSAIDs"
+                          className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all placeholder:text-slate-400"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label htmlFor="c-chronic" className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                          Chronic Conditions
+                        </label>
+                        <input
+                          id="c-chronic"
+                          type="text"
+                          value={chronicConditions}
+                          onChange={(e) => setChronicConditions(e.target.value)}
+                          placeholder="e.g. G6PD deficiency, Asthma"
+                          className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all placeholder:text-slate-400"
+                        />
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id="c-renal"
+                          checked={renalImpairment}
+                          onChange={(e) => setRenalImpairment(e.target.checked)}
+                          className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500 transition-all cursor-pointer"
+                        />
+                        <label htmlFor="c-renal" className="text-xs font-semibold text-slate-600 uppercase tracking-wider cursor-pointer">
+                          Renal impairment
+                        </label>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id="c-pregnancy"
+                          checked={pregnancy}
+                          onChange={(e) => setPregnancy(e.target.checked)}
+                          className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500 transition-all cursor-pointer"
+                        />
+                        <label htmlFor="c-pregnancy" className="text-xs font-semibold text-slate-600 uppercase tracking-wider cursor-pointer">
+                          Pregnancy
+                        </label>
+                      </div>
+
+                      {/* Chronic Medications */}
+                      <div className="space-y-2">
+                        <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                          Chronic Medications
+                        </label>
+                        <div className="flex gap-2">
+                          <div className="flex-1">
+                            <SearchableSelect
+                              options={drugOptions.filter(o => !chronicMedications.includes(o.value))}
+                              value={chronicMedPicker}
+                              onChange={(key) => setChronicMedPicker(key)}
+                              placeholder="Search drug..."
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (chronicMedPicker && !chronicMedications.includes(chronicMedPicker)) {
+                                setChronicMedications(prev => [...prev, chronicMedPicker]);
+                                setChronicMedPicker("");
+                              }
+                            }}
+                            disabled={!chronicMedPicker}
+                            className="px-3 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg transition-colors flex-shrink-0"
+                          >
+                            Add
+                          </button>
+                        </div>
+                        {chronicMedications.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5">
+                            {chronicMedications.map(key => (
+                              <span
+                                key={key}
+                                className="inline-flex items-center gap-1 bg-slate-100 border border-slate-200 text-slate-700 text-[11px] font-medium rounded-full px-2.5 py-0.5"
+                              >
+                                {drugs[key]?.name ?? key}
+                                <button
+                                  type="button"
+                                  onClick={() => setChronicMedications(prev => prev.filter(k => k !== key))}
+                                  className="ml-0.5 text-slate-400 hover:text-red-500 transition-colors leading-none"
+                                  aria-label={`Remove ${drugs[key]?.name ?? key}`}
+                                >
+                                  &times;
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <div className="space-y-1.5">
                   <label htmlFor="duration" className="block text-sm font-medium text-slate-700">Duration (days) — Optional</label>
                   <input
@@ -824,6 +1011,22 @@ export default function Home() {
                       )}
 
                       <div className="space-y-3">
+                        {renalImpairment && (
+                          <div className="bg-amber-50 rounded-lg p-3 border border-amber-200 flex items-start space-x-2">
+                            <svg className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                            <p className="text-xs font-medium text-amber-800 leading-snug">⚠ Renal dose adjustment may be required.</p>
+                          </div>
+                        )}
+                        {pregnancy && (
+                          <div className="bg-amber-50 rounded-lg p-3 border border-amber-200 flex items-start space-x-2">
+                            <svg className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3.L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                            <p className="text-xs font-medium text-amber-800 leading-snug">⚠ Check pregnancy safety for prescribed medications.</p>
+                          </div>
+                        )}
                         {maxExceededMain && (
                           <div className="bg-amber-50 rounded-lg p-3 border border-amber-200 flex items-start space-x-2">
                             <svg className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -984,6 +1187,137 @@ export default function Home() {
                   </div>
                 </div>
 
+                {/* Advanced Patient Settings Toggle */}
+                <div className="pt-1">
+                  <button
+                    onClick={() => setShowAdvanced(!showAdvanced)}
+                    className="flex items-center gap-2 text-xs font-semibold text-slate-500 hover:text-slate-800 transition-colors uppercase tracking-wider"
+                  >
+                    <svg
+                      className={`w-3.5 h-3.5 transition-transform duration-200 ${showAdvanced ? "rotate-90" : ""}`}
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                    </svg>
+                    Advanced Patient Settings
+                    {isAdvancedActive && (
+                      <span className="ml-1 text-emerald-600 font-bold lowercase">
+                        (active)
+                      </span>
+                    )}
+                  </button>
+
+                  {showAdvanced && (
+                    <div className="mt-4 space-y-4 pt-4 border-t border-slate-100 animate-in fade-in slide-in-from-top-2 duration-200">
+                      <div className="space-y-1.5">
+                        <label htmlFor="b-allergies" className="block text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                          Allergies
+                        </label>
+                        <input
+                          id="b-allergies"
+                          type="text"
+                          value={allergies}
+                          onChange={(e) => setAllergies(e.target.value)}
+                          placeholder="e.g. Penicillin, NSAIDs"
+                          className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all placeholder:text-slate-400"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label htmlFor="b-chronic" className="block text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                          Chronic Conditions
+                        </label>
+                        <input
+                          id="b-chronic"
+                          type="text"
+                          value={chronicConditions}
+                          onChange={(e) => setChronicConditions(e.target.value)}
+                          placeholder="e.g. G6PD deficiency, Asthma"
+                          className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all placeholder:text-slate-400"
+                        />
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id="b-renal"
+                          checked={renalImpairment}
+                          onChange={(e) => setRenalImpairment(e.target.checked)}
+                          className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500 transition-all cursor-pointer"
+                        />
+                        <label htmlFor="b-renal" className="text-xs font-semibold text-slate-600 uppercase tracking-wider cursor-pointer">
+                          Renal impairment
+                        </label>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id="b-pregnancy"
+                          checked={pregnancy}
+                          onChange={(e) => setPregnancy(e.target.checked)}
+                          className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500 transition-all cursor-pointer"
+                        />
+                        <label htmlFor="b-pregnancy" className="text-xs font-semibold text-slate-600 uppercase tracking-wider cursor-pointer">
+                          Pregnancy
+                        </label>
+                      </div>
+
+                      {/* Chronic Medications */}
+                      <div className="space-y-2">
+                        <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                          Chronic Medications
+                        </label>
+                        <div className="flex gap-2">
+                          <div className="flex-1">
+                            <SearchableSelect
+                              options={drugOptions.filter(o => !chronicMedications.includes(o.value))}
+                              value={chronicMedPicker}
+                              onChange={(key) => setChronicMedPicker(key)}
+                              placeholder="Search drug..."
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (chronicMedPicker && !chronicMedications.includes(chronicMedPicker)) {
+                                setChronicMedications(prev => [...prev, chronicMedPicker]);
+                                setChronicMedPicker("");
+                              }
+                            }}
+                            disabled={!chronicMedPicker}
+                            className="px-3 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg transition-colors flex-shrink-0"
+                          >
+                            Add
+                          </button>
+                        </div>
+                        {chronicMedications.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5">
+                            {chronicMedications.map(key => (
+                              <span
+                                key={key}
+                                className="inline-flex items-center gap-1 bg-slate-100 border border-slate-200 text-slate-700 text-[11px] font-medium rounded-full px-2.5 py-0.5"
+                              >
+                                {drugs[key]?.name ?? key}
+                                <button
+                                  type="button"
+                                  onClick={() => setChronicMedications(prev => prev.filter(k => k !== key))}
+                                  className="ml-0.5 text-slate-400 hover:text-red-500 transition-colors leading-none"
+                                  aria-label={`Remove ${drugs[key]?.name ?? key}`}
+                                >
+                                  &times;
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 {/* Diagnosis / Chief Complaint */}
                 <div className="space-y-1.5">
                   <label htmlFor="b-diagnosis" className="block text-xs font-semibold text-slate-500 uppercase tracking-wider">
@@ -998,74 +1332,70 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* ─── Section 1: Recommended Treatment ────────────────────── */}
-              <div className="px-6 py-5">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <svg className="w-4 h-4 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                    </svg>
-                    <h3 className="text-sm font-semibold text-slate-700">Recommended Treatment</h3>
-                  </div>
-                  {diagnosis && diagnoses[diagnosis] && (
-                    <span className="text-[11px] text-slate-400 italic truncate max-w-[140px]">{diagnoses[diagnosis].name}</span>
-                  )}
-                </div>
-
-                {diagnosis && diagnoses[diagnosis] ? (
-                  <div className="space-y-4">
-                    {/* Load Recommended Prescription button */}
-                    {diagnoses[diagnosis].recommendedBundle.length > 0 && (
+              {/* ─── Bundle selector (inline, under diagnosis) ───────────── */}
+              {diagnosis && diagnoses[diagnosis] && diagnoses[diagnosis].bundles.length > 0 && (
+                <div className="px-6 pb-4 space-y-3">
+                  {/* Line selector pills */}
+                  <div className="flex flex-wrap gap-1.5">
+                    {diagnoses[diagnosis].bundles.map((bundle, idx) => (
                       <button
-                        onClick={() => {
-                          const ageNum = parseFloat(bAge);
-                          const weightNum = parseFloat(bWeight);
-                          if (isNaN(ageNum) || ageNum <= 0) return;
-                          if (isNaN(weightNum) || weightNum < 1 || weightNum > 200) return;
-                          if (ageNum < 1 / 12 || weightNum < 3) return;
-
-                          setPrescription((prev) => {
-                            const existing = new Set(prev.map((p) => p.drugKey));
-                            const built = buildPrescription(diagnosis, ageNum, weightNum);
-                            const filtered = built.filter((item) => !existing.has(item.drugKey));
-                            return filtered.length ? [...prev, ...filtered] : prev;
-                          });
-                        }}
-                        className="w-full px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-sm rounded-lg transition-colors flex items-center justify-center gap-2"
+                        key={idx}
+                        onClick={() => setSelectedBundle(idx)}
+                        className={`px-3 py-1 rounded-full text-xs font-medium transition-colors border ${
+                          selectedBundle === idx
+                            ? "bg-blue-600 border-blue-600 text-white"
+                            : "bg-white border-slate-300 text-slate-600 hover:border-blue-400 hover:text-blue-600"
+                        }`}
                       >
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                        </svg>
-                        Load Recommended Prescription
+                        {bundle.line}
                       </button>
-                    )}
+                    ))}
+                  </div>
 
-                    {/* Compact recommended medications list */}
-                    <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-                      <h4 className="text-xs font-semibold text-slate-600 uppercase tracking-wider mb-3">Recommended treatment:</h4>
-                      <ul className="space-y-1 text-sm text-slate-700">
-                        {diagnoses[diagnosis].recommendedBundle.map((item) => (
-                          <li key={item.drug} className="flex items-center gap-2">
-                            <span className="w-1.5 h-1.5 rounded-full bg-slate-400 flex-shrink-0" />
-                            <span>{drugs[item.drug]?.name || item.drug} ({item.role})</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="bg-slate-50 border border-dashed border-slate-200 rounded-xl px-4 py-8 text-center">
-                    <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-2">
-                      <svg className="w-5 h-5 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                      </svg>
-                    </div>
-                    <p className="text-sm text-slate-400">
-                      Select a diagnosis above to see recommendations
-                    </p>
-                  </div>
-                )}
-              </div>
+                  {/* Selected bundle: compact medication list */}
+                  {(() => {
+                    const bundle = diagnoses[diagnosis].bundles[selectedBundle];
+                    if (!bundle) return null;
+                    return (
+                      <div className="space-y-2">
+                        <ul className="space-y-0.5">
+                          {bundle.items.map((item) => (
+                            <li key={item.drug} className="flex items-center gap-2 text-xs text-slate-700">
+                              <span className="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
+                              <span className="font-medium">{drugs[item.drug]?.name ?? item.drug}</span>
+                              <span className="text-slate-400">·</span>
+                              <span className="text-slate-500">{item.role}</span>
+                            </li>
+                          ))}
+                        </ul>
+
+                        <button
+                          onClick={() => {
+                            const ageNum = parseFloat(bAge);
+                            const weightNum = parseFloat(bWeight);
+                            if (isNaN(ageNum) || ageNum <= 0) return;
+                            if (isNaN(weightNum) || weightNum < 1 || weightNum > 200) return;
+                            if (ageNum < 1 / 12 || weightNum < 3) return;
+
+                            setPrescription((prev) => {
+                              const existing = new Set(prev.map((p) => p.drugKey));
+                              const built = buildPrescription(diagnosis, ageNum, weightNum, selectedBundle, renalImpairment, pregnancy);
+                              const filtered = built.filter((item) => !existing.has(item.drugKey));
+                              return filtered.length ? [...prev, ...filtered] : prev;
+                            });
+                          }}
+                          className="w-full px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-xs rounded-lg transition-colors flex items-center justify-center gap-1.5"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                          </svg>
+                          Load Recommended Prescription
+                        </button>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
 
               {/* ─── Section 2: Prescription (selected medications) ─────────── */}
               <div className="px-6 py-5">
@@ -1121,40 +1451,43 @@ export default function Home() {
                   </button>
                 </div>
 
-                {/* Interaction warnings - only show when details are expanded */}
-                {showDetails && interactionWarnings.length > 0 && (
-                  <div className="mb-4 bg-red-50 border border-red-200 text-red-800 rounded-xl px-4 py-3 shadow-sm">
-                    <div className="flex items-start gap-3">
-                      <div className="bg-red-100 rounded-full p-1.5 flex-shrink-0">
-                        <svg className="w-4 h-4 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                        </svg>
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-bold text-red-900 flex items-center gap-1.5">
-                          ⚠ Potential drug interaction detected.
-                        </p>
-                        <div className="mt-1.5 space-y-1.5">
-                          {interactionWarnings.map((w, idx) => (
-                            <div key={idx} className="bg-white/50 rounded-lg px-3 py-2 border border-red-100 text-xs leading-relaxed font-medium">
-                              {w}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
+                {pregnancy && (
+                  <div className="mb-4 bg-amber-50 rounded-lg p-3 border border-amber-200 flex items-start space-x-2">
+                    <svg className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3.L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <p className="text-xs font-medium text-amber-800 leading-snug">⚠ Check pregnancy safety for prescribed medications.</p>
                   </div>
                 )}
 
-                {/* Simple interaction alert when details are hidden */}
-                {!showDetails && interactionWarnings.length > 0 && (
-                  <div className="mb-4 bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2 flex items-center gap-2">
-                    <svg className="w-4 h-4 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                    <span className="text-sm font-medium">
-                      {interactionWarnings.length} potential drug interaction{interactionWarnings.length > 1 ? 's' : ''} detected
-                    </span>
+                {/* Interaction Warnings — always visible when any exist */}
+                {interactionWarnings.length > 0 && (
+                  <div className="mb-4 rounded-xl border border-red-200 bg-red-50 shadow-sm overflow-hidden">
+                    <div className="flex items-center gap-2 px-4 py-2.5 border-b border-red-200 bg-red-100/60">
+                      <svg className="w-4 h-4 text-red-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                      <span className="text-xs font-bold text-red-900 uppercase tracking-wide">
+                        {interactionWarnings.length} Drug Interaction{interactionWarnings.length > 1 ? "s" : ""} Detected
+                      </span>
+                    </div>
+                    <div className="px-4 py-3 space-y-2.5">
+                      {interactionWarnings.map((w, idx) => (
+                        <div key={idx} className="flex items-start gap-2.5">
+                          <span className={`mt-0.5 flex-shrink-0 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border ${
+                            w.type === "chronic"
+                              ? "bg-amber-100 text-amber-700 border-amber-200"
+                              : "bg-red-100 text-red-700 border-red-200"
+                          }`}>
+                            {w.type === "chronic" ? "Chronic" : "Rx"}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold text-red-900">{w.nameA} + {w.nameB}</p>
+                            <p className="text-[11px] text-red-700 leading-snug mt-0.5">{w.message}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
 

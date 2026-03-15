@@ -13,6 +13,8 @@ export interface PrescriptionItem {
   durationDays: number | null;
   patientAgeMonths: number | null;
   role?: string;
+  renalImpairment?: boolean;
+  pregnancy?: boolean;
 }
 
 function combineDrug(drugKey: string): Drug | null {
@@ -37,13 +39,16 @@ function combineDrug(drugKey: string): Drug | null {
   };
 }
 
-export function buildPrescription(diagnosisKey: string, ageYears: number, weightKg: number): PrescriptionItem[] {
+export function buildPrescription(diagnosisKey: string, ageYears: number, weightKg: number, bundleIndex = 0, renalImpairment = false, pregnancy = false): PrescriptionItem[] {
   const diagnosis = diagnoses[diagnosisKey];
   if (!diagnosis) return [];
 
+  const bundle = diagnosis.bundles?.[bundleIndex];
+  if (!bundle) return [];
+
   const items: PrescriptionItem[] = [];
 
-  for (const bundleItem of diagnosis.recommendedBundle) {
+  for (const bundleItem of bundle.items) {
     const drugKey = bundleItem.drug;
     const drug = combineDrug(drugKey);
     if (!drug?.formulations?.length) continue;
@@ -61,6 +66,8 @@ export function buildPrescription(diagnosisKey: string, ageYears: number, weight
       durationDays: null,
       patientAgeMonths: !isNaN(ageYears) && ageYears > 0 ? ageYears * 12 : null,
       role: bundleItem.role,
+      renalImpairment,
+      pregnancy,
     });
   }
 
@@ -71,7 +78,9 @@ export function buildManualPrescriptionItem(
   drugKey: string,
   formulationLabel: string,
   ageYears: number,
-  weightKg: number
+  weightKg: number,
+  renalImpairment = false,
+  pregnancy = false
 ): PrescriptionItem | null {
   const drug = combineDrug(drugKey);
   if (!drug?.formulations?.length) return null;
@@ -86,5 +95,7 @@ export function buildManualPrescriptionItem(
     formulationLabel,
     durationDays: null,
     patientAgeMonths: !isNaN(ageYears) && ageYears > 0 ? ageYears * 12 : null,
+    renalImpairment,
+    pregnancy,
   };
 }
